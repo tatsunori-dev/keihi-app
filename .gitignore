@@ -4,3 +4,10 @@ data.db
 launcher.log
 .DS_Store
 .env
+
+# secrets / personal
+templates.json
+data.db
+launcher.log
+__pycache__/
+*.pyc
