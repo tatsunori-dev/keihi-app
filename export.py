@@ -1,0 +1,361 @@
+# export.py
+from __future__ import annotations
+
+from pathlib import Path
+from datetime import datetime
+from typing import List, Tuple, Set
+
+from openpyxl import load_workbook
+
+from db import get_unreflected_transactions, mark_transactions_reflected
+
+
+SHEET_NAME = "現金"
+START_ROW = 3
+
+
+def _cell_str(v) -> str:
+    if v is None:
+        return ""
+    return str(v).strip()
+
+
+def _find_next_row(ws) -> int:
+    r = START_ROW
+    while True:
+        a = _cell_str(ws.cell(r, 1).value)  # 月
+        b = _cell_str(ws.cell(r, 2).value)  # 日
+        c = _cell_str(ws.cell(r, 3).value)  # コード
+        e = _cell_str(ws.cell(r, 5).value)  # 摘要
+        if a == "" and b == "" and c == "" and e == "":
+            return r
+        r += 1
+
+
+def _existing_keys(ws) -> Set[Tuple[int, int, int, str, int, str]]:
+    """
+    既存行のキー:
+    (月, 日, コード, 摘要, 金額, direction)
+    direction: in/out
+    """
+    keys: Set[Tuple[int, int, int, str, int, str]] = set()
+    r = START_ROW
+
+    while True:
+        a = ws.cell(r, 1).value
+        b = ws.cell(r, 2).value
+        c = ws.cell(r, 3).value
+        e = ws.cell(r, 5).value
+        f = ws.cell(r, 6).value
+        g = ws.cell(r, 7).value
+
+        if _cell_str(a) == "" and _cell_str(b) == "" and _cell_str(c) == "" and _cell_str(e) == "":
+            break
+
+        try:
+            m = int(a)
+            d = int(b)
+            code = int(c)
+            desc = _cell_str(e)
+
+            if f not in (None, "", 0, "0"):
+                amt = int(float(f))
+                keys.add((m, d, code, desc, amt, "in"))
+            elif g not in (None, "", 0, "0"):
+                amt = int(float(g))
+                keys.add((m, d, code, desc, amt, "out"))
+        except Exception:
+            pass
+
+        r += 1
+
+    return keys
+
+def _load_code_table(wb) -> dict[int, str]:
+    if "コード表" not in wb.sheetnames:
+        return {}
+
+    ws = wb["コード表"]
+    mapping: dict[int, str] = {}
+
+    # コード表は A=コード, B=科目名 の想定（1行目も含めて安全に拾う）
+    for r in range(1, ws.max_row + 1):
+        a = _cell_str(ws.cell(r, 1).value)
+        b = _cell_str(ws.cell(r, 2).value)
+        if not a or not b:
+            continue
+        try:
+            mapping[int(float(a))] = b
+        except Exception:
+            pass
+
+    return mapping
+
+def _set_formulas(ws, r: int, code: int, code_to_name: dict[int, str]) -> None:
+    # D列（相手科目）は「式」ではなく「文字で直書き」する（Driveで式が壊れても影響しない）
+    ws.cell(r, 4).value = code_to_name.get(int(code), "")
+    # H列（残高）は式でOK（ここは生きてる）
+    ws.cell(r, 8).value = f"=H{r-1}+F{r}-G{r}"
+
+def apply_month_to_xlsx(*, xlsx_path: Path, year: int, month: int) -> Tuple[int, int]:
+    if not xlsx_path.exists():
+        raise FileNotFoundError(f"ファイルが見つかりません: {xlsx_path}")
+
+    rows = get_unreflected_transactions(y=year, m=month)
+
+    if not rows:
+        return 0, 0
+
+    # 並び順：売上(in) → 固定費(outで固定費リスト) → 経費(outのその他)
+    fixed_items = {
+        "ガス","電気","so-net光","ソフトバンク光","楽天モバイルDMM","NTTドコモビジネス",
+        "損保ジャパン","UQmobile","YAMADA Air mobile","docomo携帯"
+    }
+
+    def _group_key(r):
+        if r["direction"] == "in":
+            return 0
+        if r["direction"] == "out" and (r["description"] in fixed_items):
+            return 1
+        return 2
+
+    # グループ → 日付 → id で安定ソート
+    rows = sorted(rows, key=lambda r: (_group_key(r), int(r["d"]), int(r["id"])))
+
+
+    wb = load_workbook(xlsx_path)
+    if SHEET_NAME not in wb.sheetnames:
+        raise ValueError(f"シート '{SHEET_NAME}' が見つかりません。存在: {wb.sheetnames}")
+
+    ws = wb[SHEET_NAME]
+
+    code_to_name = _load_code_table(wb)
+
+    existing = _existing_keys(ws)
+
+    added = 0
+    skipped = 0
+    reflected_ids: List[int] = []
+
+    # --- 現金シート既存明細(3行目〜)を読み取り ---
+    sheet_rows = []
+    data_last = _find_next_row(ws) - 1
+    clear_last = ws.max_row
+    ord_i = 0
+    for r in range(3, data_last + 1):
+        m_v = ws.cell(r, 1).value
+        d_v = ws.cell(r, 2).value
+        code_v = ws.cell(r, 3).value
+        desc_v = ws.cell(r, 5).value
+        in_v = ws.cell(r, 6).value
+        out_v = ws.cell(r, 7).value
+
+        if m_v in (None, "") or d_v in (None, "") or code_v in (None, ""):
+            continue
+
+        if in_v not in (None, "") and in_v != 0:
+            direction = "in"
+            amount = int(in_v)
+        elif out_v not in (None, "") and out_v != 0:
+            direction = "out"
+            amount = int(out_v)
+        else:
+            continue
+
+        m = int(m_v)
+        d = int(d_v)
+        code = int(code_v)
+        desc = _cell_str(desc_v)
+
+        key = (m, d, code, desc, amount, direction)
+        existing.add(key)
+        sheet_rows.append({
+            "m": m,
+            "d": d,
+            "code": code,
+            "description": desc,
+            "amount": amount,
+            "direction": direction,
+            "_ord": ord_i,
+        })
+        ord_i += 1
+
+    # --- DB未反映rowsをマージ（重複はスキップ / 売上は上書き）---
+    merged = list(sheet_rows)
+
+    # 売上の「上書き」用：amountを除いたキーで位置を引けるようにする
+    # key_base = (m, d, code, desc, direction)
+    sales_index: dict[tuple[int, int, int, str, str], int] = {}
+
+    for i, it in enumerate(merged):
+        if it.get("direction") != "in":
+            continue
+        key_base = (
+            int(it["m"]),
+            int(it["d"]),
+            int(it["code"]),
+            _cell_str(it["description"]),
+            _cell_str(it["direction"]),
+        )
+        sales_index[key_base] = i
+
+    for row in rows:
+        _id = int(row["id"])
+        m = int(row["m"])
+        d = int(row["d"])
+        code = int(row["code"])
+        desc = _cell_str(row["description"])
+        amount = int(row["amount"])
+        direction = _cell_str(row["direction"])
+
+        # 旧ロジックの完全一致キー（amount含む）: 同一行ならスキップ
+        key_full = (m, d, code, desc, amount, direction)
+        if key_full in existing:
+            skipped += 1
+            reflected_ids.append(_id)
+            continue
+
+        # ★売上（in + code=1）は amount違いでも「同一摘要は上書き」
+        if direction == "in" and code == 1:
+            key_base = (m, d, code, desc, direction)
+            if key_base in sales_index:
+                idx = sales_index[key_base]
+                merged[idx]["amount"] = amount
+                merged[idx]["_ord"] = 10**9 + _id  # 最新側に寄せる
+                existing.add(key_full)
+                reflected_ids.append(_id)
+                continue
+
+        # それ以外は「新規追加」
+        existing.add(key_full)
+        merged.append({
+            "m": m,
+            "d": d,
+            "code": code,
+            "description": desc,
+            "amount": amount,
+            "direction": direction,
+            "_ord": 10**9 + _id,
+        })
+        added += 1
+        reflected_ids.append(_id)
+
+    # --- 全件を「売上→固定費→経費」で毎回ソート ---
+    # --- 明細エリアを全クリア（テンプレ下のH数式も含む） ---
+    clear_last = ws.max_row
+
+    for r in range(3, clear_last + 1):
+        for c in range(1, 9):  # A〜H
+            ws.cell(r, c).value = None
+    fixed_items = {
+        "ガス","電気","so-net光","ソフトバンク光","楽天モバイルDMM","NTTドコモビジネス",
+        "損保ジャパン","UQmobile","YAMADA Air mobile","docomo携帯"
+    }
+
+    def _group_key(r):
+        if r["direction"] == "in":
+            return 0
+        if r["direction"] == "out" and (r["description"] in fixed_items):
+            return 1
+        return 2
+
+    # --- 固定費は「同月・同項目（description）」を最新1件に潰す（Excel重複を増やさない）---
+    fixed_best = {}
+    others = []
+
+    for rr in merged:
+        is_fixed = (rr["direction"] == "out") and (rr["description"] in fixed_items)
+        if is_fixed:
+            k = rr["description"]  # 固定費は description で一意扱い
+            prev = fixed_best.get(k)
+            # _ord が大きい方を「最新」とみなす（DB由来は 10**9+id なので必ず勝つ）
+            if (prev is None) or (int(rr.get("_ord", 0)) > int(prev.get("_ord", 0))):
+                fixed_best[k] = rr
+        else:
+            others.append(rr)
+
+    merged = others + list(fixed_best.values())
+
+    merged = sorted(merged, key=lambda r: (_group_key(r), int(r["d"]), int(r["_ord"])))
+
+    # --- 行数が足りない場合は行を増やし、3行目のスタイルを複製（黄色D/H維持）---
+    from copy import copy
+
+    def _copy_row_style(src_row: int, dst_row: int, col_from: int = 1, col_to: int = 8):
+        for c in range(col_from, col_to + 1):
+            src = ws.cell(src_row, c)
+            dst = ws.cell(dst_row, c)
+            dst._style = copy(src._style)
+            dst.number_format = src.number_format
+            dst.protection = copy(src.protection)
+            dst.alignment = copy(src.alignment)
+
+    def _copy_cell_style(src_row: int, src_col: int, dst_row: int, dst_col: int):
+        src = ws.cell(src_row, src_col)
+        dst = ws.cell(dst_row, dst_col)
+        dst._style = copy(src._style)
+        dst.number_format = src.number_format
+        dst.protection = copy(src.protection)
+        dst.alignment = copy(src.alignment)
+
+    last_row = ws.max_row
+    need_last = 2 + len(merged)  # 3行目から len(merged) 行使う
+    if need_last > last_row:
+        add_n = need_last - last_row
+        ws.insert_rows(last_row + 1, amount=add_n)
+        for rr in range(last_row + 1, need_last + 1):
+            _copy_row_style(3, rr)
+        last_row = need_last
+
+    # --- 明細エリアを全クリア（テンプレ下のH数式も含む） ---
+    clear_last = ws.max_row
+
+    for r in range(3, clear_last + 1):
+        for c in range(1, 9):
+            ws.cell(r, c).value = None
+
+    r = 3
+
+    for item in merged:
+        ws.cell(r, 1).value = item["m"]
+        ws.cell(r, 2).value = item["d"]
+        ws.cell(r, 3).value = item["code"]
+        ws.cell(r, 5).value = item["description"]
+
+        if item["direction"] == "in":
+            ws.cell(r, 6).value = item["amount"]
+            ws.cell(r, 7).value = ""
+        else:
+            ws.cell(r, 6).value = ""
+            ws.cell(r, 7).value = item["amount"]
+
+        # ★黄色帯（D/H）をテンプレ(3行目)から毎行コピーして崩れ防止
+        _copy_cell_style(3, 4, r, 4)  # D列
+        _copy_cell_style(3, 8, r, 8)  # H列
+
+        _set_formulas(ws, r, item["code"], code_to_name)
+        ws[f"H{r}"].value = f"=H{r-1}+F{r}-G{r}"
+        r += 1
+
+    wb.save(xlsx_path)
+    mark_transactions_reflected(reflected_ids)
+
+    return added, skipped
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--xlsx", required=True, help="本命xlsxのパス")
+    parser.add_argument("--month", type=int, required=True, help="反映する月(1-12)")
+    parser.add_argument("--year", type=int, default=datetime.now().year, help="年")
+    args = parser.parse_args()
+
+    xlsx_path = Path(args.xlsx).expanduser()
+    added, skipped = apply_month_to_xlsx(xlsx_path=xlsx_path, year=args.year, month=args.month)
+    print(f"OK: 追加 {added}件 / スキップ {skipped}件 / 保存 {xlsx_path}")
+
+
+if __name__ == "__main__":
+    main()

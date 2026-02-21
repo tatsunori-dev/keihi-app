@@ -1,0 +1,81 @@
+---- Sun Feb 22 00:55:59 JST 2026 ----
+whoami=tatsunorimatsumoto
+PWD(before)=/Users/tatsunorimatsumoto
+PY=/Library/Frameworks/Python.framework/Versions/3.12/bin/python3
+APP_DIR=/Users/tatsunorimatsumoto/Desktop/keihi_app
+[start] streamlit...
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.1.7:8501
+  External URL: http://14.9.217.100:8501
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+[open] http://localhost:8501
+[done]
+---- Sun Feb 22 00:56:21 JST 2026 ----
+whoami=tatsunorimatsumoto
+PWD(before)=/Users/tatsunorimatsumoto
+PY=/Library/Frameworks/Python.framework/Versions/3.12/bin/python3
+APP_DIR=/Users/tatsunorimatsumoto/Desktop/keihi_app
+[kill] port 8501
+[start] streamlit...
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.1.7:8501
+  External URL: http://14.9.217.100:8501
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+[open] http://localhost:8501
+[done]
+---- Sun Feb 22 00:59:20 JST 2026 ----
+whoami=tatsunorimatsumoto
+PWD(before)=/Users/tatsunorimatsumoto
+PY=/Library/Frameworks/Python.framework/Versions/3.12/bin/python3
+APP_DIR=/Users/tatsunorimatsumoto/Desktop/keihi_app
+[start] streamlit...
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.1.7:8501
+  External URL: http://14.9.217.100:8501
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+[open] http://localhost:8501
+[done]
+---- Sun Feb 22 00:59:33 JST 2026 ----
+whoami=tatsunorimatsumoto
+PWD(before)=/Users/tatsunorimatsumoto
+PY=/Library/Frameworks/Python.framework/Versions/3.12/bin/python3
+APP_DIR=/Users/tatsunorimatsumoto/Desktop/keihi_app
+[start] streamlit...
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.1.7:8501
+  External URL: http://14.9.217.100:8501
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+[open] http://localhost:8501
+[done]
