@@ -410,7 +410,7 @@ def adjustment_tab():
 def main():
     st.set_page_config(page_title="経費計上App", layout="centered")
 
-    st.title("📒 経費計上App（開発中）")
+    st.title("📒 経費計上App")
 
     tabs = st.tabs(
         [
