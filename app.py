@@ -336,12 +336,12 @@ def reflect_tab():
     st.write("※ 反映先は Excel の **現金** タブのみ（他タブは触りません）")
     st.write("※ 指定月の未反映データだけ追記し、反映済みにします（重複はスキップ）")
 
-    base_dir = Path.home() / "Desktop" / "keihi_xlsx"
+    base_dir = Path.home() / "Desktop" / "tatsunori-DEV" / "finance" / "keihi_xlsx"
     st.caption(f"推奨フォルダ: {base_dir}")
 
     y = datetime.now().year
     month = st.selectbox("反映する月", list(range(1, 13)), key="reflect_month")
-    base_dir = Path.home() / "Desktop" / "keihi_xlsx"
+    base_dir = Path.home() / "Desktop" / "tatsunori-DEV" / "finance" / "keihi_xlsx"
     default_path = base_dir / f"{month}月簡易版青色申告決算書.xlsx"
 
     if "reflect_path" not in st.session_state:
