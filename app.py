@@ -1,4 +1,5 @@
 # app.py
+import os
 import json
 import streamlit as st
 from export import apply_month_to_xlsx
@@ -404,11 +405,13 @@ def adjustment_tab():
         st.caption("市道民税（❌経費にしない）（表示のみ）")
 
 
+
 # ------------------------
 # メイン
 # ------------------------
 def main():
-    st.set_page_config(page_title="経費計上App", layout="centered")
+    from PIL import Image as _PILImage
+    st.set_page_config(page_title="経費計上App", page_icon=_PILImage.open(os.path.join(os.path.dirname(__file__), "icon.png")), layout="centered")
 
     st.title("📒 経費計上App")
 
@@ -418,7 +421,7 @@ def main():
             "固定費",
             "経費",
             "調整用",
-            "反映"
+            "反映",
         ]
     )
 
@@ -433,7 +436,7 @@ def main():
 
     with tabs[3]:
         adjustment_tab()
-    
+
     with tabs[4]:
         reflect_tab()
 
